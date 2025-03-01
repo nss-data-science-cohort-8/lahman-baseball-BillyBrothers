@@ -7,10 +7,34 @@
 -- 	Sort this list in descending order by the total salary earned. Which Vanderbilt player earned the most money in the majors?
 
 
+
+SELECT  namefirst ||' '|| namelast, CAST(SUM(salary) AS NUMERIC)::money AS money -- converted sum(salary) to integer data type. 
+FROM schools
+JOIN collegeplaying
+USING(schoolid)
+JOIN people
+USING(playerid)
+JOIN salaries
+USING(playerid)
+WHERE schoolname = 'Vanderbilt University'
+GROUP BY namefirst, namelast
+
+
 -- 2. Using the fielding table, group players into three groups based on their position: label players with position OF as "Outfield", those with position "SS", "1B", "2B", and "3B" as "Infield", 
 --   and those with position "P" or "C" as "Battery". 
 --   Determine the number of putouts made by each of these three groups in 2016.
 
+SELECT 
+	COUNT(po) AS number_of_put_outs,
+	CASE 
+	WHEN pos = 'OF' THEN 'Outfield'
+	WHEN pos IN('SS', '1B', '2B', '3B') THEN 'Infield'
+	WHEN pos IN('P', 'C') THEN 'Battery'
+	ELSE 'Null' 
+	END AS position
+	FROM fielding
+	WHERE yearid = '2016'
+	GROUP BY position
 
 -- 3. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends? (Hint: For this question, you might find it helpful to look at the **generate_series** function (https://www.postgresql.org/docs/9.1/functions-srf.html). If you want to see an example of this in action, check out this DataCamp video: https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
 
