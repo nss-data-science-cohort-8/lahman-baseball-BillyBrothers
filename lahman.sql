@@ -25,7 +25,7 @@ GROUP BY namefirst, namelast
 --   Determine the number of putouts made by each of these three groups in 2016.
 
 SELECT 
-	COUNT(po) AS number_of_put_outs,
+	SUM(po) AS number_of_put_outs,
 	CASE 
 	WHEN pos = 'OF' THEN 'Outfield'
 	WHEN pos IN('SS', '1B', '2B', '3B') THEN 'Infield'
@@ -36,11 +36,114 @@ SELECT
 	WHERE yearid = '2016'
 	GROUP BY position
 
--- 3. Find the average number of strikeouts per game by decade since 1920. Round the numbers you report to 2 decimal places. Do the same for home runs per game. Do you see any trends? (Hint: For this question, you might find it helpful to look at the **generate_series** function (https://www.postgresql.org/docs/9.1/functions-srf.html). If you want to see an example of this in action, check out this DataCamp video: https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
+-- 3. Find the average number of strikeouts per game by decade since 1920. 
+-- Round the numbers you report to 2 decimal places. Do the same for home runs per game. 
+-- Do you see any trends? (Hint: For this question, you might find it helpful to look at the **generate_series** function (https://www.postgresql.org/docs/9.1/functions-srf.html). 
+-- If you want to see an example of this in action, check out this DataCamp video: https://campus.datacamp.com/courses/exploratory-data-analysis-in-sql/summarizing-and-aggregating-numeric-data?ex=6)
 
--- 4. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases. Report the players' names, number of stolen bases, number of attempts, and stolen base percentage.
 
--- 5. From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? What is the smallest number of wins for a team that did win the world series? Doing this will probably result in an unusually small number of wins for a world series champion; determine why this is the case. Then redo your query, excluding the problem year. How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? What percentage of the time?
+-- Create Bins (WITH clause allows you to alias a result of a subquery to use later in the query)
+WITH bins AS (
+	SELECT generate_series(1920, 2025, 10) AS lower,
+		   generate_series(1930, 2025, 10) AS upper),
+
+-- subsetting data to tag of interest
+	strikeouts AS (
+	SELECT yearid, g, so
+	FROM battingpost
+	)
+
+SELECT lower, upper, CAST(SUM(so) AS FLOAT) / CAST(SUM(g) AS FLOAT) AS avg_strikeout_per_game
+	FROM bins
+		LEFT JOIN strikeouts
+			ON yearid >= lower
+			AND yearid < upper
+GROUP BY lower, upper
+ORDER BY lower;
+
+-- 4. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. 
+-- (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases. 
+-- Report the players' names, number of stolen bases, number of attempts, and stolen base percentage.
+
+
+SELECT namefirst ||' '|| namelast as Name, sum(sb) AS stolen_bases, sum(cs) AS caught_stealing, sum(sb) / (CAST(sum(sb) AS FLOAT) + CAST(sum(cs) AS FLOAT)) AS sucessful_stolen_bases
+FROM batting
+INNER JOIN people
+USING(playerid)
+WHERE yearid = 2016 AND sb >= 20
+GROUP BY namefirst, namelast
+ORDER BY sucessful_stolen_bases
+
+
+-- 5. 
+-- From 1970 to 2016, what is the largest number of wins for a team that did not win the world series? 
+SELECT teamID, w
+FROM teams
+WHERE yearid 
+			 BETWEEN 1970 AND 2016 
+			 AND WSWIN = 'N'
+ORDER BY w	DESC
+LIMIT 1;
+
+-- What is the smallest number of wins for a team that did win the world series? 
+SELECT *
+FROM teams
+WHERE yearid 
+			 BETWEEN 1970 AND 2016 
+			 AND WSWIN = 'Y'
+ORDER BY w;
+
+-- (the year 1981 for the MLB season invovled a ten-week strike that resulted in 713 canceled games.)
+
+
+-- How often from 1970 to 2016 was it the case that a team with the most wins also won the world series? 
+
+WITH 
+	MostWins AS (
+	    SELECT yearid, teamid, w
+	    FROM teams t1
+	    WHERE yearid BETWEEN 1970 AND 2016
+	      AND w = (SELECT MAX(w) FROM teams t2 WHERE t2.yearid = t1.yearid)
+	),
+	ws_winner AS (
+	    SELECT yearid, teamid, w
+	    FROM teams
+	    WHERE wswin = 'Y' AND yearid BETWEEN 1970 AND 2016
+	)
+ SELECT COUNT(*)
+ FROM MostWins
+ JOIN ws_winner
+ USING (yearid, teamid);
+
+	
+-- What percentage of the time?
+
+WITH MostWins AS (
+    SELECT yearid, teamid, w
+    FROM teams t1
+    WHERE yearid BETWEEN 1970 AND 2016
+      AND w = (SELECT MAX(w) FROM teams t2 WHERE t2.yearid = t1.yearid)
+),
+ws_winner AS (
+    SELECT yearid, teamid, w
+    FROM teams
+    WHERE wswin = 'Y' AND yearid BETWEEN 1970 AND 2016
+),
+MostWinsWSWins AS (
+    SELECT COUNT(*) AS count_most_wins_ws_wins
+    FROM MostWins
+    JOIN ws_winner
+    USING (yearid, teamid)
+),
+TotalSeasons AS (
+    SELECT COUNT(DISTINCT yearid) AS total_seasons
+    FROM teams
+    WHERE yearid BETWEEN 1970 AND 2016
+)
+SELECT 
+    (SELECT count_most_wins_ws_wins FROM MostWinsWSWins) * 100.0 / (SELECT total_seasons FROM TotalSeasons) AS percentage
+
+
 
 -- 6. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
 
