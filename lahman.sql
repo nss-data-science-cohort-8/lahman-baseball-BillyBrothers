@@ -8,7 +8,7 @@
 
 
 
-SELECT  namefirst ||' '|| namelast, CAST(SUM(salary) AS NUMERIC)::money AS money -- converted sum(salary) to integer data type. 
+SELECT  namefirst ||' '|| namelast, CAST(SUM(DISTINCT salary) AS NUMERIC)::money AS money -- converted sum(salary) to integer data type. 
 FROM schools
 JOIN collegeplaying
 USING(schoolid)
@@ -44,35 +44,51 @@ SELECT
 
 -- Create Bins (WITH clause allows you to alias a result of a subquery to use later in the query)
 WITH bins AS (
-	SELECT generate_series(1920, 2025, 10) AS lower,
-		   generate_series(1930, 2025, 10) AS upper),
+	SELECT generate_series(1920, 2010, 10) AS lower,
+		   generate_series(1930, 2020, 10) AS upper)
 
--- subsetting data to tag of interest
-	strikeouts AS (
-	SELECT yearid, g, so
-	FROM battingpost
-	)
 
-SELECT lower, upper, CAST(SUM(so) AS FLOAT) / CAST(SUM(g) AS FLOAT) AS avg_strikeout_per_game
+SELECT 
+	lower, 
+	upper, 
+	ROUND(CAST(SUM(so) AS NUMERIC) / CAST(SUM(g) AS NUMERIC), 2) AS avg_strikeout_per_game, 
+	ROUND(CAST(SUM(hr) AS NUMERIC) / CAST(SUM(g) AS NUMERIC), 2) AS avg_hr
 	FROM bins
-		LEFT JOIN strikeouts
+		LEFT JOIN teams
 			ON yearid >= lower
-			AND yearid < upper
+				AND yearid < upper
 GROUP BY lower, upper
 ORDER BY lower;
+
+
+WITH bins AS(
+     SELECT generate_series(1920,2010,10) AS lower,
+	        generate_series(1930,2020,10) AS upper)
+SELECT 
+	lower, 
+	upper, 
+	ROUND((CAST(SUM(so) AS NUMERIC))/(CAST(SUM(g) AS NUMERIC)/2), 2) AS avg_strikeout_per_game, 
+	ROUND((CAST(SUM(hr) AS NUMERIC))/(CAST(SUM(g) AS NUMERIC)/2), 2) AS avg_hr
+	 FROM bins
+		 LEFT JOIN teams
+		 ON yearid >= lower 
+		 AND yearid <= upper
+ GROUP BY lower, upper
+ ORDER BY lower, upper;
 
 -- 4. Find the player who had the most success stealing bases in 2016, where __success__ is measured as the percentage of stolen base attempts which are successful. 
 -- (A stolen base attempt results either in a stolen base or being caught stealing.) Consider only players who attempted _at least_ 20 stolen bases. 
 -- Report the players' names, number of stolen bases, number of attempts, and stolen base percentage.
 
 
-SELECT namefirst ||' '|| namelast as Name, sum(sb) AS stolen_bases, sum(cs) AS caught_stealing, sum(sb) / (CAST(sum(sb) AS FLOAT) + CAST(sum(cs) AS FLOAT)) AS sucessful_stolen_bases
+SELECT namefirst ||' '|| namelast as Name, sum(sb) AS stolen_bases, sum(cs) AS caught_stealing, sum(sb) + sum(cs) AS total_bases, sum(sb) / (CAST(sum(sb) AS FLOAT) + CAST(sum(cs) AS FLOAT)) AS sucessful_stolen_bases
 FROM batting
 INNER JOIN people
 USING(playerid)
 WHERE yearid = 2016 AND sb >= 20
 GROUP BY namefirst, namelast
-ORDER BY sucessful_stolen_bases
+ORDER BY sucessful_stolen_bases DESC
+LIMIT 1;
 
 
 -- 5. 
@@ -91,7 +107,8 @@ FROM teams
 WHERE yearid 
 			 BETWEEN 1970 AND 2016 
 			 AND WSWIN = 'Y'
-ORDER BY w;
+ORDER BY w
+limit 1;
 
 -- (the year 1981 for the MLB season invovled a ten-week strike that resulted in 713 canceled games.)
 
@@ -103,31 +120,34 @@ WITH
 	    SELECT yearid, teamid, w
 	    FROM teams t1
 	    WHERE yearid BETWEEN 1970 AND 2016
+					 AND yearid != 1981
 	      AND w = (SELECT MAX(w) FROM teams t2 WHERE t2.yearid = t1.yearid)
 	),
 	ws_winner AS (
 	    SELECT yearid, teamid, w
 	    FROM teams
 	    WHERE wswin = 'Y' AND yearid BETWEEN 1970 AND 2016
+						  AND yearid != 1981
 	)
  SELECT COUNT(*)
  FROM MostWins
  JOIN ws_winner
  USING (yearid, teamid);
 
-	
 -- What percentage of the time?
 
 WITH MostWins AS (
     SELECT yearid, teamid, w
     FROM teams t1
     WHERE yearid BETWEEN 1970 AND 2016
+				 AND yearid != 1981
       AND w = (SELECT MAX(w) FROM teams t2 WHERE t2.yearid = t1.yearid)
 ),
 ws_winner AS (
-    SELECT yearid, teamid, w
+    SELECT yearid, teamid
     FROM teams
     WHERE wswin = 'Y' AND yearid BETWEEN 1970 AND 2016
+					  AND yearid != 1981
 ),
 MostWinsWSWins AS (
     SELECT COUNT(*) AS count_most_wins_ws_wins
@@ -138,14 +158,32 @@ MostWinsWSWins AS (
 TotalSeasons AS (
     SELECT COUNT(DISTINCT yearid) AS total_seasons
     FROM teams
-    WHERE yearid BETWEEN 1970 AND 2016
+    WHERE yearid BETWEEN 1970 AND 2016 AND yearid != 1981
 )
 SELECT 
     (SELECT count_most_wins_ws_wins FROM MostWinsWSWins) * 100.0 / (SELECT total_seasons FROM TotalSeasons) AS percentage
 
 
+-- 6. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? 
+-- Give their full name and the teams that they were managing when they won the award.
 
--- 6. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? Give their full name and the teams that they were managing when they won the award.
+SELECT *
+FROM managers
+
+SELECT *
+FROM awardssharemanagers
+WHERE lgid = 'NL' or lgid = 'AL' 
+
+
+SELECT *
+FROM awardssharemanagers
+WHERE lgid = 'NL' or lgid = 'AL' 
+
+SELECT *
+FROM awardsmanagers
+INNER JOIN awardssharemanagers
+USING (playerid)
+
 
 -- 7. Which pitcher was the least efficient in 2016 in terms of salary / strikeouts? Only consider pitchers who started at least 10 games (across all teams). Note that pitchers often play for more than one team in a season, so be sure that you are counting all stats for each player.
 
