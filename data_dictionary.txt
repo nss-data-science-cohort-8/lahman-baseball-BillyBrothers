@@ -679,6 +679,7 @@ notes          Notes about the award
 
 awardID        name of award votes were received for
 yearID         Year
+
 lgID           League
 playerID       Manager ID code
 pointsWon      Number of points received

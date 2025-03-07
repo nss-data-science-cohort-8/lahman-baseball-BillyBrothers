@@ -167,31 +167,156 @@ SELECT
 -- 6. Which managers have won the TSN Manager of the Year award in both the National League (NL) and the American League (AL)? 
 -- Give their full name and the teams that they were managing when they won the award.
 
-SELECT *
-FROM managers
 
-SELECT *
-FROM awardssharemanagers
-WHERE lgid = 'NL' or lgid = 'AL' 
+select *
+from awardsmanagers
 
-
-SELECT *
-FROM awardssharemanagers
-WHERE lgid = 'NL' or lgid = 'AL' 
-
-SELECT *
+WITH CTE AS (
+SELECT playerid
 FROM awardsmanagers
-INNER JOIN awardssharemanagers
-USING (playerid)
+WHERE awardid = 'TSN Manager of the Year'
+AND lgid IN ('NL', 'AL')
+GROUP BY playerid
+HAVING COUNT(DISTINCT lgid) = 2)
+
+SELECT namefirst || '' || namelast AS full_name, teams.name, yearid, teams.lgid
+FROM CTE
+INNER JOIN people
+USING(playerid)
+INNER JOIN awardsmanagers
+USING(playerid)
+INNER JOIN managers
+USING(playerid, yearid, lgid)
+INNER JOIN teams
+USING(teamid, yearid)
+WHERE awardid = 'TSN Manager of the Year'
 
 
--- 7. Which pitcher was the least efficient in 2016 in terms of salary / strikeouts? Only consider pitchers who started at least 10 games (across all teams). Note that pitchers often play for more than one team in a season, so be sure that you are counting all stats for each player.
+-- 7. Which pitcher was the least efficient in 2016 in terms of salary / strikeouts? 
+-- Only consider pitchers who started at least 10 games (across all teams). 
+-- Note that pitchers often play for more than one team in a season, so be sure that you are counting all stats for each player.
 
--- 8. Find all players who have had at least 3000 career hits. Report those players' names, total number of hits, and the year they were inducted into the hall of fame (If they were not inducted into the hall of fame, put a null in that column.) Note that a player being inducted into the hall of fame is indicated by a 'Y' in the **inducted** column of the halloffame table.
+WITH CTE as(
+SELECT SUM(salary) AS total_salary, playerid
+FROM salaries
+WHERE yearid = 2016
+GROUP BY playerid
+),
 
--- 9. Find all players who had at least 1,000 hits for two different teams. Report those players' full names.
+	CTE2 AS(
+SELECT sum(gs) AS total_gs, sum(so) AS total_so, playerid
+FROM pitching
+WHERE yearid = 2016
+GROUP BY playerid
+	)
 
--- 10. Find all players who hit their career highest number of home runs in 2016. Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. Report the players' first and last names and the number of home runs they hit in 2016.
+SELECT ROUND(total_salary::numeric/total_so::numeric, 2)::money AS salary_strikeouts, namefirst || '' || namelast AS name
+FROM CTE2
+INNER JOIN CTE
+USING(playerid)
+INNER JOIN PEOPLE
+USING(playerid)
+WHERE total_gs >= 10
+ORDER BY salary_strikeouts DESC
+
+
+-- 8. Find all players who have had at least 3000 career hits. 
+-- Report those players' names, total number of hits, and the year they were inducted into the hall of fame (If they were not inducted into the hall of fame, put a null in that column.) 
+-- Note that a player being inducted into the hall of fame is indicated by a 'Y' in the **inducted** column of the halloffame table.
+
+
+WITH exceed_3000 AS(
+SELECT SUM(h) AS total_hits, playerid
+FROM batting
+GROUP BY playerid
+HAVING sum(h) >= 3000
+	),
+
+ HOF_Yes AS (
+SELECT *
+FROM halloffame
+WHERE inducted = 'Y'
+)
+
+
+SELECT namefirst || '' || namelast AS name, total_hits, yearid AS year
+FROM exceed_3000
+LEFT JOIN HOF_Yes
+USING(playerid)
+INNER JOIN people
+USING(playerid)
+ORDER BY year DESC
+
+
+
+-- 9. Find all players who had at least 1,000 hits for two different teams. 
+-- Report those players' full names.
+
+WITH thousandaires AS (
+    SELECT
+        playerid
+    FROM batting
+    GROUP BY playerid, teamid
+    HAVING SUM(h) >= 1000
+),
+double_thousandaires AS (
+    SELECT
+        playerid
+    FROM thousandaires
+    GROUP BY playerid
+    HAVING COUNT(*) >= 2
+)
+SELECT
+    namefirst || ' ' || namelast AS full_name
+FROM people
+INNER JOIN double_thousandaires
+USING(playerid);
+
+
+-- 10. Find all players who hit their career highest number of home runs in 2016. 
+-- Consider only players who have played in the league for at least 10 years, and who hit at least one home run in 2016. 
+-- Report the players' first and last names and the number of home runs they hit in 2016.
+
+
+WITH full_batting AS (
+    SELECT
+        playerid,
+        yearid,
+        SUM(hr) AS hr
+    FROM batting
+    GROUP BY playerid, yearid
+),
+decaders AS (
+    SELECT
+        playerid
+    FROM full_batting
+    GROUP BY playerid
+    HAVING COUNT(DISTINCT yearid) >= 10
+),
+eligible_players AS (
+    SELECT
+        playerid,
+        hr
+    FROM decaders
+    INNER JOIN full_batting
+    USING(playerid)
+    WHERE yearid = 2016 AND hr >= 1
+),
+career_bests AS (
+    SELECT
+        playerid,
+        MAX(hr) AS hr
+    FROM full_batting
+    GROUP BY playerid
+)
+SELECT
+    namefirst || ' ' || namelast AS full_name,
+    hr
+FROM eligible_players
+NATURAL JOIN career_bests
+INNER JOIN people
+USING(playerid)
+ORDER BY full_name;
 
 -- After finishing the above questions, here are some open-ended questions to consider.
 
